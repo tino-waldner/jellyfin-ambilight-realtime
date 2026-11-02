@@ -1678,7 +1678,14 @@ export default function (view) {
         return Promise.all([window.ApiClient.getPluginConfiguration(pluginId), ensureFactoryDefaults()])
             .then(([config]) => {
                 loadedConfig = config;
-                hueChannelLevels = JSON.parse(JSON.stringify(config.HueChannelBrightnessByArea ?? {}));
+                hueChannelLevels = {};
+                for (const entry of (config.HueChannelBrightnessEntries ?? [])) {
+                    const areaId = entry.EntertainmentConfigurationId;
+                    const channelId = Number(entry.ChannelId);
+                    if (!areaId || !Number.isInteger(channelId)) continue;
+                    (hueChannelLevels[areaId] ??= {})[channelId] =
+                        Math.max(0, Math.min(100, Number(entry.BrightnessPercent ?? 100)));
+                }
                 resetHueAnchors(config);
                 resetGreyBalance(config);
                 byId("enabled").checked = config.Enabled !== false;
@@ -1819,7 +1826,12 @@ export default function (view) {
             HueEntertainmentConfigurationId: byId("hueEntertainmentConfig").value || "00000000-0000-0000-0000-000000000000",
             HueEntertainmentConfigurationName: byId("hueEntertainmentConfig").selectedOptions[0]?.textContent || "",
             HueBrightnessPercent: Number(byId("hueBrightnessPercent").value),
-            HueChannelBrightnessByArea: hueChannelLevels,
+            HueChannelBrightnessEntries: Object.entries(hueChannelLevels).flatMap(([areaId, channels]) =>
+                Object.entries(channels).map(([channelId, brightness]) => ({
+                    EntertainmentConfigurationId: areaId,
+                    ChannelId: Number(channelId),
+                    BrightnessPercent: Math.max(0, Math.min(100, Number(brightness)))
+                }))),
             HueResponsePercent: Number(byId("hueResponsePercent").value),
             HueBlackLevelFloorPercent: Number(byId("hueBlackLevelFloorPercent").value),
             HueScreenWidthPercent: Number(byId("hueScreenWidthPercent").value),
