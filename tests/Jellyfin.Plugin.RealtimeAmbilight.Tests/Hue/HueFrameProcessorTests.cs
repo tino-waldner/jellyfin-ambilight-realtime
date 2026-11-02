@@ -9,6 +9,41 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Tests.Hue;
 public class HueFrameProcessorTests
 {
     [Fact]
+    public void ChannelBrightnessIsIndependentAndUpdatesLive()
+    {
+        var time = new ManualMonotonicTime();
+        var levels = new Dictionary<int, int> { [4] = 100, [5] = 50, [6] = 0 };
+        var processor = new HueFrameProcessor(time, channelBrightnessPercentResolver: id => levels[id]);
+        var frame = CreateFrame(64, 64, static (_, _) => (235, 235, 235));
+        var channelIds = new[] { 4, 5, 6 };
+        var channels = channelIds.Select(id =>
+            new HueEntertainmentChannel(id, new HuePosition(0, 0, 1), [])).ToArray();
+        processor.Process(frame, channels);
+        time.Advance(TimeSpan.FromMilliseconds(2100));
+        var result = processor.Process(frame, channels);
+        Assert.True(result[4].Red > 0f);
+        Assert.InRange(result[5].Red / result[4].Red, 0.499f, 0.501f);
+        Assert.Equal(0f, result[6].Red);
+
+        levels[5] = 100;
+        var updated = processor.Process(frame, channels);
+        Assert.Equal(updated[4].Red, updated[5].Red);
+    }
+
+    [Fact]
+    public void IdentifyOverrideIgnoresChannelBrightness()
+    {
+        var processor = new HueFrameProcessor(new ManualMonotonicTime(), channelBrightnessPercentResolver: _ => 0);
+        var channels = new[] { new HueEntertainmentChannel(4, new HuePosition(0, 0, 1), []) };
+        processor.SetChannelOverride(new Dictionary<int, Jellyfin.Plugin.RealtimeAmbilight.Core.Color.LinearRgb>
+        {
+            [4] = new(1f, 1f, 1f)
+        });
+        var result = processor.Process(CreateFrame(32, 32, static (_, _) => (235, 235, 235)), channels);
+        Assert.True(result[4].Red > 0f);
+    }
+
+    [Fact]
     public void EmptyChannelListProducesNoOutputWithoutSamplingAnything()
     {
         var processor = new HueFrameProcessor(new ManualMonotonicTime());

@@ -123,6 +123,24 @@ public sealed class HueController : ControllerBase
         return Ok(configurations);
     }
 
+    /// <summary>Names of physical Hue lights keyed by Entertainment service ID.</summary>
+    [HttpGet("EntertainmentLightNames")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<IReadOnlyDictionary<Guid, string>>> GetEntertainmentLightNamesAsync(CancellationToken cancellationToken)
+    {
+        var credentials = await _credentialStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var host = Plugin.Instance?.Configuration.HueBridgeHost;
+        if (credentials is null || string.IsNullOrWhiteSpace(host)) return Conflict("Pair with a bridge first.");
+
+        var serviceToLight = await _bridgeClient.ResolveLightIdsAsync(
+            host, credentials.CertificateThumbprintSha256, credentials.ApplicationKey, cancellationToken).ConfigureAwait(false);
+        var lightNames = await _bridgeClient.GetLightNamesAsync(
+            host, credentials.CertificateThumbprintSha256, credentials.ApplicationKey, cancellationToken).ConfigureAwait(false);
+        return Ok(serviceToLight.Where(pair => lightNames.ContainsKey(pair.Value))
+            .ToDictionary(pair => pair.Key, pair => lightNames[pair.Value]));
+    }
+
     /// <summary>Selects an existing entertainment configuration and saves the operator's Hue preferences.</summary>
     [HttpPost("Select")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

@@ -231,6 +231,37 @@ public sealed class HueBridgeClient : IHueBridgeClient, IDisposable
         return HueEntertainmentServiceParser.ParseLightIdsByServiceId(json);
     }
 
+    /// <summary>Reads Hue light names, keyed by their light resource IDs. Read-only and certificate-pinned.</summary>
+    public async Task<IReadOnlyDictionary<Guid, string>> GetLightNamesAsync(
+        string host, string expectedCertificateThumbprintSha256, string applicationKey, CancellationToken cancellationToken)
+    {
+        var client = CreatePinnedClient(host, expectedCertificateThumbprintSha256);
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"https://{host}:{Port}/clip/v2/resource/light"));
+        request.Headers.Add("hue-application-key", applicationKey);
+        using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        var result = new Dictionary<Guid, string>();
+        if (document.RootElement.TryGetProperty("data", out var lights) && lights.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var light in lights.EnumerateArray())
+            {
+                if (!light.TryGetProperty("id", out var idElement) ||
+                    !Guid.TryParse(idElement.GetString(), out var id) ||
+                    !light.TryGetProperty("metadata", out var metadata) ||
+                    !metadata.TryGetProperty("name", out var nameElement))
+                {
+                    continue;
+                }
+
+                var name = nameElement.GetString();
+                if (!string.IsNullOrWhiteSpace(name)) result[id] = name;
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>
     /// Returns the cached client for this exact (host, thumbprint) pair if
     /// one already exists, or builds and caches a new one. Safe to call
