@@ -294,10 +294,23 @@ export default function (view) {
             if (!Number.isInteger(id)) continue;
             const members = channel.Members ?? channel.members ?? [];
             const names = [...new Set(members.map(member => {
-                const serviceId = String(member.ServiceId ?? member.serviceId ?? "").toLowerCase();
+                const serviceId = String(member.ServiceId ?? member.serviceId ?? "")
+                .replace(/-/g, "")
+                .toLowerCase();
                 return hueServiceNames[serviceId] || "";
             }).filter(Boolean))];
-            const indices = members.map(member => member.Index ?? member.index).filter(index => index !== undefined);
+            const indices = members
+                .map(member => member.Index ?? member.index)
+                .filter(index => index !== undefined && (
+                    Number(index) !== 0 ||
+                    channels.some(other =>
+                        (other.Members ?? other.members ?? []).some(otherMember =>
+                            String(otherMember.ServiceId ?? otherMember.serviceId ?? "").replace(/-/g, "").toLowerCase() ===
+                            String(members[0]?.ServiceId ?? members[0]?.serviceId ?? "").replace(/-/g, "").toLowerCase() &&
+                            Number(otherMember.Index ?? otherMember.index) > 0
+                        )
+                    )
+                ));
             const title = `Channel ${id}${names.length ? " — " + names.join(", ") : ""}${indices.length ? " (segment " + indices.join(", ") + ")" : ""}`;
             const wrapper = document.createElement("div");
             wrapper.style.margin = "1em 0";
@@ -317,12 +330,57 @@ export default function (view) {
                 if (!hueChannelLevels[areaId.toLowerCase()]) hueChannelLevels[areaId.toLowerCase()] = {};
                 hueChannelLevels[areaId.toLowerCase()][id] = Number(slider.value);
                 value.textContent = ` ${slider.value}%`;
+                byId("hueChannelBrightnessSave").disabled = false;
+                byId("hueChannelBrightnessSaveStatus").textContent = "Unsaved changes";
+                byId("hueChannelBrightnessSaveStatus").className = "raCardState raWarn";
             });
             label.append(value);
             wrapper.append(label, slider);
             root.append(wrapper);
         }
     }
+
+    function serializeHueChannelBrightness() {
+        return Object.entries(hueChannelLevels).flatMap(([areaId, channels]) =>
+            Object.entries(channels).map(([channelId, brightness]) => ({
+                EntertainmentConfigurationId: areaId,
+                ChannelId: Number(channelId),
+                BrightnessPercent: Math.max(0, Math.min(100, Number(brightness)))
+            }))
+        );
+    }
+
+    let hueChannelSaveInProgress = false;
+
+    async function saveHueChannelBrightness() {
+        if (!loadedConfig || hueChannelSaveInProgress) return;
+
+        const button = byId("hueChannelBrightnessSave");
+        const status = byId("hueChannelBrightnessSaveStatus");
+        const entries = serializeHueChannelBrightness();
+        const config = { ...loadedConfig, HueChannelBrightnessEntries: entries };
+
+        hueChannelSaveInProgress = true;
+        button.disabled = true;
+        status.textContent = "Saving…";
+        status.className = "raCardState";
+
+        try {
+            await window.ApiClient.updatePluginConfiguration(pluginId, config);
+            loadedConfig = config;
+            status.textContent = "Saved successfully";
+            status.className = "raCardState raOk";
+        } catch (error) {
+            console.error("Failed to save Hue channel brightness:", error);
+            status.textContent = "Could not save. Please retry.";
+            status.className = "raCardState raWarn";
+            button.disabled = false;
+        } finally {
+            hueChannelSaveInProgress = false;
+        }
+    }
+
+    byId("hueChannelBrightnessSave").addEventListener("click", saveHueChannelBrightness);
 
     function renderHueIdentifyButtons(channelCount) {
         const row = byId("hueIdentifyButtons");
@@ -1821,12 +1879,7 @@ export default function (view) {
             HueEntertainmentConfigurationId: byId("hueEntertainmentConfig").value || "00000000-0000-0000-0000-000000000000",
             HueEntertainmentConfigurationName: byId("hueEntertainmentConfig").selectedOptions[0]?.textContent || "",
             HueBrightnessPercent: Number(byId("hueBrightnessPercent").value),
-            HueChannelBrightnessEntries: Object.entries(hueChannelLevels).flatMap(([areaId, channels]) =>
-                Object.entries(channels).map(([channelId, brightness]) => ({
-                    EntertainmentConfigurationId: areaId,
-                    ChannelId: Number(channelId),
-                    BrightnessPercent: Math.max(0, Math.min(100, Number(brightness)))
-                }))),
+            HueChannelBrightnessEntries: serializeHueChannelBrightness(),
             HueResponsePercent: Number(byId("hueResponsePercent").value),
             HueBlackLevelFloorPercent: Number(byId("hueBlackLevelFloorPercent").value),
             HueScreenWidthPercent: Number(byId("hueScreenWidthPercent").value),
