@@ -409,6 +409,18 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                 () => true,
                 responsePercentResolver: () => Plugin.Instance?.Configuration.HueResponsePercent ?? 40,
                 floorPercentResolver: () => Plugin.Instance?.Configuration.HueBlackLevelFloorPercent ?? 1,
+                channelBrightnessPercentResolver: channelId =>
+                {
+                    var current = Plugin.Instance?.Configuration;
+                    if (current?.HueChannelBrightnessByArea is not { } areas ||
+                        !areas.TryGetValue(selected.Id.ToString("D"), out var levels) ||
+                        levels is null || !levels.TryGetValue(channelId, out var percent))
+                    {
+                        return 100;
+                    }
+
+                    return Math.Clamp(percent, 0, 100);
+                },
                 screenExtentResolver: static () =>
                 {
                     var configuration = Plugin.Instance?.Configuration;

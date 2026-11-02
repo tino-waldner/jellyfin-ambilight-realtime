@@ -113,6 +113,10 @@ export default function (view) {
     ];
     const ledCountFields = ["topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount"];
     let loadedConfig = null;
+    let hueEntertainmentAreas = [];
+    let hueServiceNames = {};
+    let hueChannelLevels = {};
+
     let discoveredControllers = [];
     let knownDevices = [];
     // Latest live signals, refreshed by their own periodic polls, read by
@@ -274,6 +278,52 @@ export default function (view) {
     // bridge's own origin. Lighting one channel at a time and looking is the
     // only way to settle it, and working that out by hand has cost this
     // project three separate rounds.
+    function renderHueChannelBrightness() {
+        const areaId = byId("hueEntertainmentConfig").value;
+        const area = hueEntertainmentAreas.find(item => (item.Id ?? item.id) === areaId);
+        const root = byId("hueChannelBrightnessControls");
+        root.replaceChildren();
+        if (!area) {
+            root.textContent = "Select an Entertainment Area to configure its channels.";
+            return;
+        }
+        const channels = area.Channels ?? area.channels ?? [];
+        const levels = hueChannelLevels[areaId.toLowerCase()] ?? {};
+        for (const channel of channels) {
+            const id = Number(channel.ChannelId ?? channel.channelId);
+            if (!Number.isInteger(id)) continue;
+            const members = channel.Members ?? channel.members ?? [];
+            const names = [...new Set(members.map(member => {
+                const serviceId = String(member.ServiceId ?? member.serviceId ?? "").toLowerCase();
+                return hueServiceNames[serviceId] || "";
+            }).filter(Boolean))];
+            const indices = members.map(member => member.Index ?? member.index).filter(index => index !== undefined);
+            const title = `Channel ${id}${names.length ? " — " + names.join(", ") : ""}${indices.length ? " (segment " + indices.join(", ") + ")" : ""}`;
+            const wrapper = document.createElement("div");
+            wrapper.style.margin = "1em 0";
+            const label = document.createElement("label");
+            label.textContent = title;
+            label.style.display = "block";
+            const slider = document.createElement("input");
+            slider.type = "range";
+            slider.min = "0";
+            slider.max = "100";
+            slider.step = "1";
+            slider.style.width = "100%";
+            slider.value = String(Math.max(0, Math.min(100, Number(levels[id] ?? 100))));
+            const value = document.createElement("strong");
+            value.textContent = ` ${slider.value}%`;
+            slider.addEventListener("input", () => {
+                if (!hueChannelLevels[areaId.toLowerCase()]) hueChannelLevels[areaId.toLowerCase()] = {};
+                hueChannelLevels[areaId.toLowerCase()][id] = Number(slider.value);
+                value.textContent = ` ${slider.value}%`;
+            });
+            label.append(value);
+            wrapper.append(label, slider);
+            root.append(wrapper);
+        }
+    }
+
     function renderHueIdentifyButtons(channelCount) {
         const row = byId("hueIdentifyButtons");
         const buttons = [];
@@ -1628,6 +1678,7 @@ export default function (view) {
         return Promise.all([window.ApiClient.getPluginConfiguration(pluginId), ensureFactoryDefaults()])
             .then(([config]) => {
                 loadedConfig = config;
+                hueChannelLevels = JSON.parse(JSON.stringify(config.HueChannelBrightnessByArea ?? {}));
                 resetHueAnchors(config);
                 resetGreyBalance(config);
                 byId("enabled").checked = config.Enabled !== false;
@@ -1768,6 +1819,7 @@ export default function (view) {
             HueEntertainmentConfigurationId: byId("hueEntertainmentConfig").value || "00000000-0000-0000-0000-000000000000",
             HueEntertainmentConfigurationName: byId("hueEntertainmentConfig").selectedOptions[0]?.textContent || "",
             HueBrightnessPercent: Number(byId("hueBrightnessPercent").value),
+            HueChannelBrightnessByArea: hueChannelLevels,
             HueResponsePercent: Number(byId("hueResponsePercent").value),
             HueBlackLevelFloorPercent: Number(byId("hueBlackLevelFloorPercent").value),
             HueScreenWidthPercent: Number(byId("hueScreenWidthPercent").value),
@@ -2083,6 +2135,7 @@ export default function (view) {
     function refreshHueEntertainmentConfigs() {
         return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Hue/EntertainmentConfigurations"))
             .then(configs => {
+                hueEntertainmentAreas = configs;
                 const select = byId("hueEntertainmentConfig");
                 const previousValue = select.value || loadedConfig?.HueEntertainmentConfigurationId;
                 select.textContent = "";
@@ -2097,6 +2150,12 @@ export default function (view) {
                 }
 
                 show("hueSelectionSection", true);
+                renderHueChannelBrightness();
+                return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Hue/EntertainmentLightNames"))
+                    .then(names => {
+                        hueServiceNames = Object.fromEntries(Object.entries(names).map(([id, name]) => [id.toLowerCase(), name]));
+                        renderHueChannelBrightness();
+                    }).catch(() => { /* Channel IDs still work if the bridge does not provide names. */ });
             })
             .catch(() => {});
     }
@@ -2234,6 +2293,7 @@ export default function (view) {
     byId("hueScanBridges").addEventListener("click", scanHueBridges);
     byId("hueStartPairing").addEventListener("click", startHuePairing);
     byId("hueRefreshConfigs").addEventListener("click", refreshHueEntertainmentConfigs);
+    byId("hueEntertainmentConfig").addEventListener("change", renderHueChannelBrightness);
     byId("hueUnlink").addEventListener("click", unlinkHue);
     byId("hueBrightnessPercent").addEventListener("input", setHueBrightnessLabel);
     byId("hueResponsePercent").addEventListener("input", setHueResponseLabel);

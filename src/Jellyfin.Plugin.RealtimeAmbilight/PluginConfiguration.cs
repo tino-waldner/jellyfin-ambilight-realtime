@@ -403,6 +403,10 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public int HueBrightnessPercent { get; set; } = 188;
 
+    /// <summary>Brightness percentages keyed by Entertainment Area GUID and channel ID; missing entries mean 100%.</summary>
+    public Dictionary<string, Dictionary<int, int>> HueChannelBrightnessByArea { get; set; } = new();
+
+
     /// <summary>What the paired lights do once a synchronised session ends.</summary>
     public Core.Hue.HueEndBehaviour HueEndBehaviour { get; set; } = Core.Hue.HueEndBehaviour.WarmWhiteDim;
 
