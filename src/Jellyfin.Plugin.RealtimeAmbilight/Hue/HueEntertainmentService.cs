@@ -413,7 +413,8 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                 {
                     var entries = Plugin.Instance?.Configuration.HueChannelBrightnessEntries;
                     var entry = entries?.FirstOrDefault(x =>
-                        string.Equals(x.EntertainmentConfigurationId, selected.Id.ToString("D"), StringComparison.OrdinalIgnoreCase) &&
+                        Guid.TryParse(x.EntertainmentConfigurationId, out var areaId) &&
+                        areaId == selected.Id &&
                         x.ChannelId == channelId);
                     return Math.Clamp(entry?.BrightnessPercent ?? 100, 0, 100);
                 },
