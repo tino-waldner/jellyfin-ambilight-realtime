@@ -398,7 +398,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int HueBrightnessPercent { get; set; } = 188;
 
     /// <summary>Brightness percentages keyed by Entertainment Area GUID and channel ID; missing entries mean 100%.</summary>
-    public Dictionary<string, Dictionary<int, int>> HueChannelBrightnessByArea { get; set; } = new();
+    public List<HueChannelBrightnessEntry> HueChannelBrightnessEntries { get; set; } = new();
 
 
     /// <summary>What the paired lights do once a synchronised session ends.</summary>
@@ -475,4 +475,14 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <inheritdoc cref="HueScreenCentreHeightPercent"/>
     public int HueScreenCentreWidthPercent { get; set; }
+}
+
+/// <summary>A persisted brightness override for one Hue Entertainment channel.</summary>
+public sealed class HueChannelBrightnessEntry
+{
+    public string EntertainmentConfigurationId { get; set; } = string.Empty;
+
+    public int ChannelId { get; set; }
+
+    public int BrightnessPercent { get; set; } = 100;
 }
