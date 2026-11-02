@@ -54,6 +54,7 @@ public sealed class HueFrameProcessor
     private readonly IMonotonicTime _monotonicTime;
     private readonly HueNaturalLightFilter _filter;
     private readonly Func<HueScreenExtent> _screenExtentResolver;
+    private readonly Func<int, int> _channelBrightnessPercentResolver;
 
     /// <summary>
     /// Channel colours to send instead of anything derived from the picture,
@@ -85,7 +86,8 @@ public sealed class HueFrameProcessor
         LogicalSamplingLayout? samplingLayout = null,
         Func<int>? responsePercentResolver = null,
         Func<int>? floorPercentResolver = null,
-        Func<HueScreenExtent>? screenExtentResolver = null)
+        Func<HueScreenExtent>? screenExtentResolver = null,
+        Func<int, int>? channelBrightnessPercentResolver = null)
     {
         _monotonicTime = monotonicTime ?? throw new ArgumentNullException(nameof(monotonicTime));
         _ignoreBlackBordersResolver = ignoreBlackBordersResolver ?? (static () => true);
@@ -93,6 +95,7 @@ public sealed class HueFrameProcessor
         _samplingLayout = samplingLayout ?? DefaultSamplingLayout;
         _filter = new HueNaturalLightFilter(responsePercentResolver, floorPercentResolver);
         _screenExtentResolver = screenExtentResolver ?? (static () => HueScreenExtent.Full);
+        _channelBrightnessPercentResolver = channelBrightnessPercentResolver ?? (static _ => 100);
     }
 
     /// <param name="overallBrightnessFraction">The operator's overall Hue brightness control, 0-1.</param>
@@ -142,9 +145,13 @@ public sealed class HueFrameProcessor
         {
             var mapped = HueChannelMapper.Map(channel.Position, edgeSamples, sceneAverage, screen);
             var filtered = _filter.Apply(channel.ChannelId, mapped, elapsedMilliseconds, overallBrightnessFraction);
-            result[channel.ChannelId] = fadeIn >= 1d
-                ? filtered
-                : new LinearRgb(filtered.Red * (float)fadeIn, filtered.Green * (float)fadeIn, filtered.Blue * (float)fadeIn);
+            var channelBrightness = Math.Clamp(
+                _channelBrightnessPercentResolver(channel.ChannelId), 0, 100) / 100f;
+            var scale = channelBrightness * (float)fadeIn;
+            result[channel.ChannelId] = new LinearRgb(
+                filtered.Red * scale,
+                filtered.Green * scale,
+                filtered.Blue * scale);
         }
 
         return result;
