@@ -2218,7 +2218,7 @@ export default function (view) {
                 renderHueChannelBrightness();
                 return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Hue/EntertainmentLightNames"))
                     .then(names => {
-                        hueServiceNames = Object.fromEntries(Object.entries(names).map(([id, name]) => [id.toLowerCase(), name]));
+                        hueServiceNames = Object.fromEntries(Object.entries(names).map(([id, name]) => [id.replace(/-/g, "").toLowerCase(), name]));
                         renderHueChannelBrightness();
                     }).catch(() => { /* Channel IDs still work if the bridge does not provide names. */ });
             })
